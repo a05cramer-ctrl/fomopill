@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/tick.js": { "maxDuration": 60, "memory": 1024 },
+    "api/board.js": { "maxDuration": 15 },
+    "api/stats.js": { "maxDuration": 15 },
+    "api/holder.js": { "maxDuration": 15 }
+  },
+  "headers": [
+    { "source": "/api/tick", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
+  ]
+}

@@ -1,0 +1,1 @@
+window.FOMOPILL_CFG={NAME:"FOMO PILL",TICKER:"FOMOPILL",CA:"",CHAIN:"solana",PAD:"pumpfun",PAIR:"",X:"",BUY:"",CHART:"",PILL_WALLET:"",REPO:""}

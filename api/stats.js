@@ -67,19 +67,6 @@ function cfg() {
     delayMin: num("DELAY_MIN", 5)
   };
 }
-function publicConfig(c = cfg()) {
-  return {
-    triggerWallets: c.triggerWallets,
-    windowMin: Math.round(c.windowSec / 60),
-    triggerNetUsd: c.triggerNetUsd,
-    maxEntrySol: c.maxEntrySol,
-    entryPct: c.entryPct,
-    takeProfitX: c.takeProfitX,
-    trailPct: c.trailPct,
-    stopX: c.stopX,
-    maxHoldH: c.maxHoldH
-  };
-}
 
 // lib/util.js
 function getFetch(fetchFn) {
@@ -262,8 +249,7 @@ async function statsResponse({ env = process.env, fetchFn, now = () => Date.now(
     positions: [],
     trades: [],
     burns: [],
-    fees: [],
-    config: publicConfig(c)
+    fees: []
   };
   if (!kv.configured) return { status: 200, body: { ...base, error: "kv_not_configured" } };
   const [totalsFlat, hTrades, hDoses, dosesRaw, positionsRaw, tradesRaw, burnsRaw, feesRaw, pricesRaw, pillRaw, boardRaw, peakFlat, wTradesRaw, wPosRaw, wStatsFlat] = await kv.pipeline([

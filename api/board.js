@@ -2611,15 +2611,6 @@ var BAD_ANY = ["avtt", "snttbg", "jrgonpx", "uvgyre"].map(rot13);
 var BAD_WORD = ["xvxr", "xvxrf", "puvax", "puvaxf", "fcvp", "fcvpf", "genaal", "genaavrf", "snt", "sntf", "avtn", "avtnf"].map(rot13);
 
 // lib/board.js
-var ruleOf = (c) => ({
-  wallets: c.triggerWallets,
-  netUsd: c.triggerNetUsd,
-  windowMin: Math.round(c.windowSec / 60),
-  minMcap: c.minMcap,
-  maxMcap: c.maxMcap,
-  minLiq: c.minLiq,
-  cooldownMin: c.cooldownMin
-});
 function pickDelayedSnapshot(snaps, nowMs, delayMin = 5) {
   const minAge = delayMin * 6e4;
   const eligible = (snaps || []).filter((s) => s && Number.isFinite(s.updatedAt) && nowMs - s.updatedAt >= minAge);
@@ -2658,11 +2649,11 @@ function shape(doc, { c, gate, delayed }) {
     windowSec: d.windowSec ?? c.windowSec,
     delayed,
     gate,
-    rule: ruleOf(c),
     totals: d.totals || { tradesRead10m: 0, wallets10m: 0, coins10m: 0 },
     coins: (d.coins || []).map((x) => ({
       ...x,
       liquidity: x.liquidity ?? null,
+      q: c.triggerNetUsd > 0 ? Math.round(Math.max(0, Math.min(1, (Number(x.netUsd) || 0) / c.triggerNetUsd)) * 1e3) / 1e3 : 0,
       buyersW: x.buyersW || [],
       recent: x.recent || [],
       state: x.state || "filling",

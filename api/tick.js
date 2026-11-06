@@ -57,6 +57,7 @@ function cfg() {
     readConcurrency: Math.max(1, Math.min(32, num("READ_CONCURRENCY", 6))),
     readTimeoutMs: num("READ_TIMEOUT_MS", 6e3),
     tickBudgetMs: num("TICK_BUDGET_MS", 5e4),
+    tickGapMs: num("TICK_GAP_MS", 5e4),
     windowSec: num("WINDOW_SEC", 600),
     // board / trigger
     triggerWallets: num("TRIGGER_WALLETS", 5),
@@ -85,6 +86,11 @@ function cfg() {
     confirmTimeoutMs: num("CONFIRM_TIMEOUT_MS", 45e3),
     // gate
     holderMin: num("HOLDER_MIN", 1e5),
+    // the pill's X account (off unless X_POST=1 and the four X_* keys are set)
+    xMinWallets: num("X_MIN_WALLETS", 8),
+    xCallsPerHour: Math.max(0, num("X_CALLS_PER_HOUR", 2)),
+    xMaxPerDay: Math.max(0, num("X_MAX_PER_DAY", 30)),
+    xMarks: str("X_MARKS", "2,3,5,10").split(",").map(Number).filter((n) => Number.isFinite(n) && n > 1).sort((a2, b) => a2 - b),
     holderSecret: str("HOLDER_SECRET", ""),
     cronSecret: str("CRON_SECRET", ""),
     delayMin: num("DELAY_MIN", 5)
@@ -495,7 +501,7 @@ function createHasher(hashCons) {
   hashC.create = () => hashCons();
   return hashC;
 }
-function randomBytes(bytesLength = 32) {
+function randomBytes2(bytesLength = 32) {
   if (crypto2 && typeof crypto2.getRandomValues === "function") {
     return crypto2.getRandomValues(new Uint8Array(bytesLength));
   }
@@ -2162,7 +2168,7 @@ function eddsa(Point, cHash, eddsaOpts = {}) {
   });
   const { prehash } = eddsaOpts;
   const { BASE: BASE2, Fp: Fp2, Fn: Fn2 } = Point;
-  const randomBytes3 = eddsaOpts.randomBytes || randomBytes;
+  const randomBytes4 = eddsaOpts.randomBytes || randomBytes2;
   const adjustScalarBytes2 = eddsaOpts.adjustScalarBytes || ((bytes) => bytes);
   const domain = eddsaOpts.domain || ((data, ctx, phflag) => {
     _abool2(phflag, "phflag");
@@ -2244,7 +2250,7 @@ function eddsa(Point, cHash, eddsaOpts = {}) {
     signature: 2 * _size,
     seed: _size
   };
-  function randomSecretKey(seed2 = randomBytes3(lengths.seed)) {
+  function randomSecretKey(seed2 = randomBytes4(lengths.seed)) {
     return _abytes2(seed2, lengths.seed, "seed");
   }
   function keygen(seed2) {
@@ -15243,7 +15249,7 @@ var require_websocket = __commonJS({
     var http2 = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes4, createHash: createHash2 } = __require("crypto");
     var { Duplex, Readable: Readable2 } = __require("stream");
     var { URL: URL4 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -15794,7 +15800,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes3(16).toString("base64");
+      const key = randomBytes4(16).toString("base64");
       const request = isSecure ? https2.request : http2.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -17995,7 +18001,7 @@ function getWLengths(Fp2, Fn2) {
 }
 function ecdh(Point, ecdhOpts = {}) {
   const { Fn: Fn2 } = Point;
-  const randomBytes_ = ecdhOpts.randomBytes || randomBytes;
+  const randomBytes_ = ecdhOpts.randomBytes || randomBytes2;
   const lengths = Object.assign(getWLengths(Point.Fp, Fn2), { seed: getMinHashLength(Fn2.ORDER) });
   function isValidSecretKey(secretKey) {
     try {
@@ -18070,7 +18076,7 @@ function ecdsa(Point, hash, ecdsaOpts = {}) {
     bits2int: "function",
     bits2int_modN: "function"
   });
-  const randomBytes3 = ecdsaOpts.randomBytes || randomBytes;
+  const randomBytes4 = ecdsaOpts.randomBytes || randomBytes2;
   const hmac2 = ecdsaOpts.hmac || ((key, ...msgs) => hmac(hash, key, concatBytes(...msgs)));
   const { Fp: Fp2, Fn: Fn2 } = Point;
   const { ORDER: CURVE_ORDER, BITS: fnBits } = Fn2;
@@ -18225,7 +18231,7 @@ function ecdsa(Point, hash, ecdsaOpts = {}) {
     const d = _normFnElement(Fn2, privateKey);
     const seedArgs = [int2octets(d), int2octets(h1int)];
     if (extraEntropy != null && extraEntropy !== false) {
-      const e = extraEntropy === true ? randomBytes3(lengths.secretKey) : extraEntropy;
+      const e = extraEntropy === true ? randomBytes4(lengths.secretKey) : extraEntropy;
       seedArgs.push(ensureBytes("extraEntropy", e));
     }
     const seed2 = concatBytes(...seedArgs);
@@ -98039,7 +98045,7 @@ init_config();
 
 // lib/tick.js
 init_config();
-import { randomBytes as randomBytes2 } from "node:crypto";
+import { randomBytes as randomBytes3 } from "node:crypto";
 
 // lib/kv.js
 init_util();
@@ -98079,6 +98085,8 @@ function kvClient({ env = process.env, fetchFn, timeoutMs = 8e3 } = {}) {
 }
 var K = {
   lock: "fp:lock",
+  tickGate: "fp:tickGate",
+  // set NX for TICK_GAP_MS when the tick is open (no CRON_SECRET)
   lastSig: "fp:lastSig",
   window: "fp:window",
   // JSON array of [t,w,m,s,u,id] tuples (one value)
@@ -98098,6 +98106,10 @@ var K = {
   // hash mint -> ms
   dosePeak: "fp:dosePeak",
   // hash "<mint>@<at>" -> best USD price seen since that dose (recent doses only)
+  xCalls: "fp:xCalls",
+  // hash "<mint>@<at>" -> JSON posted call {mint, at, symbol, priceAtDose, mcapAtDose, id, marks}
+  xCount: "fp:xCount",
+  // hash "d:<day>" / "c:<hour>" -> posts made
   positions: "fp:positions",
   // JSON array
   trades: "fp:trades",
@@ -98467,6 +98479,105 @@ function jupClient({ fetchFn, timeoutMs = 8e3, base: base2 = JUP_LITE } = {}) {
 // lib/tick.js
 init_util();
 init_exits();
+
+// lib/x.js
+init_util();
+import { createHmac as createHmac2, randomBytes } from "node:crypto";
+var X_TWEETS_URL = "https://api.x.com/2/tweets";
+var enc = (s) => encodeURIComponent(String(s)).replace(/[!'()*]/g, (ch) => "%" + ch.charCodeAt(0).toString(16).toUpperCase());
+function oauthHeader({ method, url, consumerKey, consumerSecret, token, tokenSecret, nonce, timestamp, params = {} }) {
+  const oauth = {
+    oauth_consumer_key: consumerKey,
+    oauth_nonce: nonce ?? randomBytes(16).toString("hex"),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: String(timestamp ?? Math.floor(Date.now() / 1e3)),
+    oauth_token: token,
+    oauth_version: "1.0"
+  };
+  const all = { ...params, ...oauth };
+  const paramStr = Object.keys(all).map((k2) => [enc(k2), enc(all[k2])]).sort((a2, b) => a2[0] === b[0] ? a2[1] < b[1] ? -1 : 1 : a2[0] < b[0] ? -1 : 1).map(([k2, v2]) => `${k2}=${v2}`).join("&");
+  const base2 = [method.toUpperCase(), enc(url), enc(paramStr)].join("&");
+  const signature2 = createHmac2("sha1", `${enc(consumerSecret)}&${enc(tokenSecret)}`).update(base2).digest("base64");
+  const head = { ...oauth, oauth_signature: signature2 };
+  return "OAuth " + Object.keys(head).sort().map((k2) => `${enc(k2)}="${enc(head[k2])}"`).join(", ");
+}
+function xClient({ env = process.env, fetchFn, timeoutMs = 8e3 } = {}) {
+  const keys = { consumerKey: env.X_API_KEY, consumerSecret: env.X_API_SECRET, token: env.X_ACCESS_TOKEN, tokenSecret: env.X_ACCESS_SECRET };
+  const configured = env.X_POST === "1" && Object.values(keys).every((v2) => typeof v2 === "string" && v2.length > 0);
+  async function post(text, replyTo = null) {
+    if (!configured) throw new Error("X not configured");
+    const body = { text };
+    if (replyTo) body.reply = { in_reply_to_tweet_id: String(replyTo) };
+    const res = await fetchWithTimeout(
+      fetchFn,
+      X_TWEETS_URL,
+      { method: "POST", headers: { Authorization: oauthHeader({ method: "POST", url: X_TWEETS_URL, ...keys }), "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      timeoutMs
+    );
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j || !j.data || !j.data.id) throw new Error(`X HTTP ${res.status} ${JSON.stringify(j).slice(0, 160)}`);
+    return String(j.data.id);
+  }
+  return { configured, post };
+}
+var trim0 = (s) => s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
+function usdShort(n) {
+  if (!Number.isFinite(n)) return "?";
+  const a2 = Math.abs(n);
+  if (a2 >= 1e9) return "$" + trim0((a2 / 1e9).toFixed(2)) + "B";
+  if (a2 >= 1e6) return "$" + trim0((a2 / 1e6).toFixed(2)) + "M";
+  if (a2 >= 1e3) return "$" + trim0((a2 / 1e3).toFixed(1)) + "k";
+  return "$" + Math.round(a2);
+}
+var xLabel = (x) => (x >= 10 ? String(Math.round(x)) : trim0(x.toFixed(1))) + "x";
+var symOf = (d) => d.symbol ? "$" + String(d.symbol).replace(/^\$/, "").slice(0, 14) : d.mint.slice(0, 4) + "\u2026" + d.mint.slice(-4);
+function callText(d, { boughtSol = null } = {}) {
+  const mcap = Number(d.mcapAtDose) || (Number(d.priceAtDose) > 0 ? d.priceAtDose * 1e9 : NaN);
+  const lines = [
+    `CALL ${symOf(d)}`,
+    "",
+    `${d.buyers} fomo wallets went in, ${usdShort(d.netUsd)} net in under 10 min.`,
+    `Called at ${usdShort(mcap)} mcap.` + (boughtSol ? ` Bought ${trim0(Number(boughtSol).toFixed(2))} SOL.` : ""),
+    "",
+    `CA: ${d.mint}`
+  ];
+  return lines.join("\n");
+}
+function receiptText(call, mark, mcapNow) {
+  const mcap = Number(call.mcapAtDose) || (Number(call.priceAtDose) > 0 ? call.priceAtDose * 1e9 : NaN);
+  return `${symOf(call)} is ${xLabel(mark)} from the call.
+
+Called at ${usdShort(mcap)} mcap. Now ${usdShort(mcapNow)}.`;
+}
+function planXPosts({ dose, calls, counts, prices, nowMs, c, boughtSol = null, maxPerTick = 3 }) {
+  const day = Math.floor(nowMs / 864e5), hour = Math.floor(nowMs / 36e5);
+  let today = Number(counts[`d:${day}`]) || 0;
+  let callsThisHour = Number(counts[`c:${hour}`]) || 0;
+  const out = [];
+  if (dose && dose.buyers >= c.xMinWallets && callsThisHour < c.xCallsPerHour && today < c.xMaxPerDay) {
+    out.push({ kind: "call", key: `${dose.mint}@${dose.at}`, dose, text: callText(dose, { boughtSol }) });
+    today++;
+    callsThisHour++;
+  }
+  const open = Object.entries(calls || {}).map(([key, v2]) => ({ key, ...v2 })).filter((v2) => v2.id && nowMs - Number(v2.at) < 864e5 && Number(v2.priceAtDose) > 0).sort((a2, b) => Number(b.at) - Number(a2.at));
+  for (const v2 of open) {
+    if (out.length >= maxPerTick || today >= c.xMaxPerDay) break;
+    const p2 = prices[v2.mint];
+    const usd = p2 && Number(p2.usdPrice);
+    if (!(usd > 0)) continue;
+    const x = usd / Number(v2.priceAtDose);
+    const done = new Set((v2.marks || []).map(Number));
+    const crossed = c.xMarks.filter((m) => x >= m && !done.has(m));
+    if (!crossed.length) continue;
+    const mark = Math.max(...crossed);
+    const mcapNow = Number(p2.mcap) || usd * 1e9;
+    out.push({ kind: "receipt", key: v2.key, mark, marks: [...done, ...crossed].sort((a2, b) => a2 - b), replyTo: v2.id, text: receiptText(v2, mark, mcapNow) });
+    today++;
+  }
+  return out;
+}
+
+// lib/tick.js
 var RELEASE_LOCK = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
 var TX_OPTS = { maxSupportedTransactionVersion: 1, encoding: "jsonParsed", commitment: "confirmed" };
 async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sleepFn, trading } = {}) {
@@ -98481,7 +98592,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
   };
   const kv = kvClient({ env, fetchFn });
   if (!kv.configured) return { ...log, ok: false, error: "kv_not_configured", ms: now() - start };
-  const lockToken = randomBytes2(8).toString("hex");
+  const lockToken = randomBytes3(8).toString("hex");
   let locked;
   try {
     locked = await kv.cmd("SET", K.lock, lockToken, "NX", "PX", String(c.tickBudgetMs + 5e3));
@@ -98491,7 +98602,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
   if (locked !== "OK") return { ...log, ok: false, skipped: "locked", ms: now() - start };
   const writes = [];
   try {
-    const [lastSig, windowRaw, totalsFlat, dosedFlat, positionsRaw, pendingRaw, feeLastAtRaw, solPriceRaw, dosesRaw, hTradesFlat, pricesRaw, peakFlat] = await kv.pipeline([
+    const [lastSig, windowRaw, totalsFlat, dosedFlat, positionsRaw, pendingRaw, feeLastAtRaw, solPriceRaw, dosesRaw, hTradesFlat, pricesRaw, peakFlat, xCallsFlat, xCountFlat] = await kv.pipeline([
       ["GET", K.lastSig],
       ["GET", K.window],
       ["HGETALL", K.totals],
@@ -98503,7 +98614,9 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
       ["LRANGE", K.doses, "0", "19"],
       ["HGETALL", K.hTrades],
       ["GET", K.prices],
-      ["HGETALL", K.dosePeak]
+      ["HGETALL", K.dosePeak],
+      ["HGETALL", K.xCalls],
+      ["HGETALL", K.xCount]
     ]);
     const totals = flatToObj(totalsFlat);
     const dosedAt = flatToObj(dosedFlat);
@@ -98511,6 +98624,12 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
     let pending = jsonParseSafe(pendingRaw, []) || [];
     const recentDoses = parseList(dosesRaw);
     const prevPrices = jsonParseSafe(pricesRaw, {}) || {};
+    const xCalls = {};
+    for (const [key, v2] of Object.entries(flatToObj(xCallsFlat))) {
+      const o = jsonParseSafe(v2, null);
+      if (o && o.mint) xCalls[key] = o;
+    }
+    const xCount = flatToObj(xCountFlat);
     const jup = jupClient({ fetchFn });
     const solCached = jsonParseSafe(solPriceRaw, null);
     let solPrice = null;
@@ -98554,7 +98673,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
         for (const r of results) {
           if (r.skipped) read.skipped += 20;
           else if (!r.ok) read.failed += 20;
-          else for (const x of r.value) x.ok && x.value ? onTx(x.value) : read.failed++;
+          else for (const x2 of r.value) x2.ok && x2.value ? onTx(x2.value) : read.failed++;
         }
       } else {
         const results = await mapPool(planned, c.readConcurrency, (sig) => readRpc.getTransaction(sig), { shouldStop });
@@ -98572,7 +98691,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
     const window2 = mergeWindow(jsonParseSafe(windowRaw, []) || [], trades, nowSec, c.windowSec);
     const board = buildBoard(window2, { top: c.boardTop, triggerWallets: c.triggerWallets });
     log.stages.window = { size: window2.length, coins: board.totals.coins10m, wallets: board.totals.wallets10m };
-    const interest = [.../* @__PURE__ */ new Set([...board.coins.map((x) => x.mint), ...tapeMints(window2), ...recentDoses.map((d) => d.mint), ...positions.map((p2) => p2.mint)])];
+    const interest = [.../* @__PURE__ */ new Set([...board.coins.map((x2) => x2.mint), ...tapeMints(window2), ...recentDoses.map((d) => d.mint), ...positions.map((p2) => p2.mint), ...Object.values(xCalls).map((v2) => v2.mint)])];
     let info = /* @__PURE__ */ new Map();
     try {
       if (interest.length) info = await jup.tokenInfo(interest);
@@ -98588,7 +98707,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
     }
     const priceMap = new Map(Object.entries(prices));
     const coins = enrichCoins(board.coins, priceMap, dosedAt);
-    log.stages.board = { coins: coins.length, enriched: coins.filter((x) => x.symbol).length };
+    log.stages.board = { coins: coins.length, enriched: coins.filter((x2) => x2.symbol).length };
     const nowMs = now();
     const pick = pickDose(coins, dosedAt, nowMs, c);
     let dose = null;
@@ -98605,7 +98724,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
         mcapAtDose: pick.mcap ?? null
       };
       dosedAt[pick.mint] = String(nowMs);
-      for (const x of coins) if (x.mint === pick.mint) x.dosedAt = nowMs;
+      for (const x2 of coins) if (x2.mint === pick.mint) x2.dosedAt = nowMs;
       writes.push(["LPUSH", K.doses, JSON.stringify(dose)], ["LTRIM", K.doses, "0", String(CAPS.doses - 1)], ["HSET", K.dosedAt, pick.mint, String(nowMs)], ["HINCRBY", K.totals, "dosesAll", "1"], ["HINCRBY", K.hDoses, String(hourIndex(nowMs)), "1"]);
     }
     {
@@ -98749,6 +98868,37 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
       if (tradeRows.length) writes.push(["LTRIM", K.trades, "0", String(CAPS.trades - 1)]);
       log.stages.trading = { ...tr, positions: positions.length, pendingBurns: pending.length };
     }
+    const x = xClient({ env, fetchFn });
+    if (x.configured) {
+      const xs = { posted: 0, failed: 0 };
+      const nowX = now();
+      const bought = dose ? (positions.find((p2) => p2.mint === dose.mint && Number(p2.openedAt) >= nowMs) || {}).costSol : null;
+      const plan = planXPosts({ dose, calls: xCalls, counts: xCount, prices, nowMs: nowX, c, boughtSol: bought || null });
+      const day = Math.floor(nowX / 864e5), hour = Math.floor(nowX / 36e5);
+      for (const p2 of plan) {
+        if (remaining() < 6e3) break;
+        try {
+          const id = await x.post(p2.text, p2.kind === "receipt" ? p2.replyTo : null);
+          xs.posted++;
+          writes.push(["HINCRBY", K.xCount, `d:${day}`, "1"]);
+          if (p2.kind === "call") {
+            const d = p2.dose;
+            writes.push(["HINCRBY", K.xCount, `c:${hour}`, "1"], ["HSET", K.xCalls, p2.key, JSON.stringify({ mint: d.mint, at: d.at, symbol: d.symbol, priceAtDose: d.priceAtDose, mcapAtDose: d.mcapAtDose, id, marks: [] })]);
+          } else {
+            writes.push(["HSET", K.xCalls, p2.key, JSON.stringify({ ...xCalls[p2.key], marks: p2.marks })]);
+          }
+        } catch (e) {
+          xs.failed++;
+          fail(`x ${p2.kind}`, e);
+        }
+      }
+      for (const [key, v2] of Object.entries(xCalls)) if (nowX - Number(v2.at) >= 864e5) writes.push(["HDEL", K.xCalls, key]);
+      for (const f2 of Object.keys(xCount)) {
+        const [kind, n] = f2.split(":");
+        if (kind === "d" && Number(n) < day - 1 || kind === "c" && Number(n) < hour - 1) writes.push(["HDEL", K.xCount, f2]);
+      }
+      log.stages.x = { planned: plan.length, ...xs };
+    }
     const updatedAt = now();
     const boardDoc = {
       updatedAt,
@@ -98827,7 +98977,20 @@ function authorized2(req) {
 }
 async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") return send(res, 405, { ok: false, error: "method" });
-  if (!authorized2(req)) return send(res, 401, { ok: false, error: "unauthorized" });
+  const c = cfg();
+  if (c.cronSecret) {
+    if (!authorized2(req)) return send(res, 401, { ok: false, error: "unauthorized" });
+  } else {
+    try {
+      const kv = kvClient({});
+      if (kv.configured) {
+        const gate = await kv.cmd("SET", K.tickGate, "1", "NX", "PX", String(c.tickGapMs));
+        if (gate !== "OK") return send(res, 200, { ok: true, skipped: "too_soon" });
+      }
+    } catch (e) {
+      return send(res, 500, { ok: false, error: errMsg(e) });
+    }
+  }
   try {
     const log = await runTick({});
     return send(res, 200, log);

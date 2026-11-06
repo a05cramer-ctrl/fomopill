@@ -28,6 +28,7 @@ function cfg() {
     readConcurrency: Math.max(1, Math.min(32, num("READ_CONCURRENCY", 6))),
     readTimeoutMs: num("READ_TIMEOUT_MS", 6e3),
     tickBudgetMs: num("TICK_BUDGET_MS", 5e4),
+    tickGapMs: num("TICK_GAP_MS", 5e4),
     windowSec: num("WINDOW_SEC", 600),
     // board / trigger
     triggerWallets: num("TRIGGER_WALLETS", 5),
@@ -56,6 +57,11 @@ function cfg() {
     confirmTimeoutMs: num("CONFIRM_TIMEOUT_MS", 45e3),
     // gate
     holderMin: num("HOLDER_MIN", 1e5),
+    // the pill's X account (off unless X_POST=1 and the four X_* keys are set)
+    xMinWallets: num("X_MIN_WALLETS", 8),
+    xCallsPerHour: Math.max(0, num("X_CALLS_PER_HOUR", 2)),
+    xMaxPerDay: Math.max(0, num("X_MAX_PER_DAY", 30)),
+    xMarks: str("X_MARKS", "2,3,5,10").split(",").map(Number).filter((n) => Number.isFinite(n) && n > 1).sort((a, b) => a - b),
     holderSecret: str("HOLDER_SECRET", ""),
     cronSecret: str("CRON_SECRET", ""),
     delayMin: num("DELAY_MIN", 5)
@@ -142,6 +148,8 @@ function kvClient({ env = process.env, fetchFn, timeoutMs = 8e3 } = {}) {
 }
 var K = {
   lock: "fp:lock",
+  tickGate: "fp:tickGate",
+  // set NX for TICK_GAP_MS when the tick is open (no CRON_SECRET)
   lastSig: "fp:lastSig",
   window: "fp:window",
   // JSON array of [t,w,m,s,u,id] tuples (one value)
@@ -161,6 +169,10 @@ var K = {
   // hash mint -> ms
   dosePeak: "fp:dosePeak",
   // hash "<mint>@<at>" -> best USD price seen since that dose (recent doses only)
+  xCalls: "fp:xCalls",
+  // hash "<mint>@<at>" -> JSON posted call {mint, at, symbol, priceAtDose, mcapAtDose, id, marks}
+  xCount: "fp:xCount",
+  // hash "d:<day>" / "c:<hour>" -> posts made
   positions: "fp:positions",
   // JSON array
   trades: "fp:trades",

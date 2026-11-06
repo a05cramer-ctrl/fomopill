@@ -1,0 +1,31 @@
+# Runs the pill's tick once a minute. GitHub starts this every 5 minutes; each run calls the tick
+# every 60 s for ~5 minutes. The tick itself refuses calls closer than 50 s apart, so overlaps are harmless.
+# If you set CRON_SECRET in Vercel, add the same value as a repo secret named CRON_SECRET.
+name: tick
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: tick
+  cancel-in-progress: false
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Tick every minute for 5 minutes
+        env:
+          URL: https://fomopill-omega.vercel.app/api/tick
+          KEY: ${{ secrets.CRON_SECRET }}
+        run: |
+          end=$((SECONDS + 285))
+          while :; do
+            t0=$SECONDS
+            curl -sS -m 70 "$URL?key=$KEY" | head -c 240 || true
+            echo
+            next=$((t0 + 60))
+            [ $next -ge $end ] && break
+            gap=$((next - SECONDS))
+            [ $gap -gt 0 ] && sleep $gap
+          done

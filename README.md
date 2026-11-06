@@ -15,24 +15,24 @@ Project > Storage > Upstash (Redis) > create + connect to this project.
 It adds KV_REST_API_URL and KV_REST_API_TOKEN by itself.
 
 ## 4. Environment variables (Project > Settings > Environment Variables)
-Required:
-- CRON_SECRET      any long random string (you make it up)
-- HOLDER_SECRET    any long random string (you make it up)
-Recommended:
-- RPC_URL          your Helius RPC URL from your api folder
+Nothing else is needed to run: the board, the calls and the stats work with just the storage from step 3.
 Add after launch:
 - PILL_MINT        the $FOMOPILL CA. Turns on the holder view: holders see fomo live, everyone else 5 minutes late.
+- HOLDER_SECRET    any long random string (you make it up). Needed once PILL_MINT is set.
 - PILL_WALLET      the pill's wallet address (shown on the site)
+Optional:
+- RPC_URL          your Helius RPC URL (faster reads than the public RPC)
+- CRON_SECRET      locks /api/tick to ?key=CRON_SECRET. If you set it, add the same value in GitHub:
+                   repo > Settings > Secrets and variables > Actions > New secret, name CRON_SECRET.
 Only when you fund the wallet and want it to trade:
 - BOT_SECRET_KEY   the pill wallet's secret key
 - LIVE             1
 Redeploy after changing env vars (Deployments > ... > Redeploy).
 
-## 5. The 1-minute tick (cron-job.org, free)
-Create a cron job:
-URL: https://YOUR-DOMAIN/api/tick?key=YOUR_CRON_SECRET
-Schedule: every 1 minute. Method GET. Timeout 60 s.
-Check: open that URL once; it returns JSON with "ok": true. After 1-2 minutes the board and calls fill in.
+## 5. The 1-minute tick (already running)
+.github/workflows/tick.yml calls https://fomopill-omega.vercel.app/api/tick once a minute from GitHub Actions
+(free on a public repo). Without CRON_SECRET the tick runs for anyone but never more than once per 50 s.
+Check: GitHub > Actions > tick shows the runs; each line is the tick's JSON. New domain? Change URL in that file.
 
 ## 6. After launch
 - config.js: fill CA, X, BUY (https://pump.fun/coin/CA), CHART (https://gmgn.ai/sol/token/CA). Commit.

@@ -173,6 +173,14 @@ var K = {
   // hash "<mint>@<at>" -> JSON posted call {mint, at, symbol, priceAtDose, mcapAtDose, id, marks}
   xCount: "fp:xCount",
   // hash "d:<day>" / "c:<hour>" -> posts made
+  wSig: "fp:wSig",
+  // newest signature of Pip's wallet already read
+  wPos: "fp:wPos",
+  // JSON {mint: position} — Pip's open hand trades (made in the fomo app), USD cost basis
+  wTrades: "fp:wTrades",
+  // list of Pip's hand trades, newest first
+  wStats: "fp:wStats",
+  // hash realizedUsd / wins / losses / buys / sells
   positions: "fp:positions",
   // JSON array
   trades: "fp:trades",
@@ -258,7 +266,7 @@ async function statsResponse({ env = process.env, fetchFn, now = () => Date.now(
     config: publicConfig(c)
   };
   if (!kv.configured) return { status: 200, body: { ...base, error: "kv_not_configured" } };
-  const [totalsFlat, hTrades, hDoses, dosesRaw, positionsRaw, tradesRaw, burnsRaw, feesRaw, pricesRaw, pillRaw, boardRaw, peakFlat] = await kv.pipeline([
+  const [totalsFlat, hTrades, hDoses, dosesRaw, positionsRaw, tradesRaw, burnsRaw, feesRaw, pricesRaw, pillRaw, boardRaw, peakFlat, wTradesRaw, wPosRaw, wStatsFlat] = await kv.pipeline([
     ["HGETALL", K.totals],
     ["HGETALL", K.hTrades],
     ["HGETALL", K.hDoses],
@@ -270,7 +278,10 @@ async function statsResponse({ env = process.env, fetchFn, now = () => Date.now(
     ["GET", K.prices],
     ["GET", K.pill],
     ["GET", K.board],
-    ["HGETALL", K.dosePeak]
+    ["HGETALL", K.dosePeak],
+    ["LRANGE", K.wTrades, "0", "29"],
+    ["GET", K.wPos],
+    ["HGETALL", K.wStats]
   ]);
   const peaks = flatToObj(peakFlat);
   const t = flatToObj(totalsFlat);
@@ -290,6 +301,17 @@ async function statsResponse({ env = process.env, fetchFn, now = () => Date.now(
       buyTx: p.buyTx
     };
   });
+  const ws = flatToObj(wStatsFlat);
+  const handPositions = Object.values(jsonParseSafe(wPosRaw, {}) || {}).map((p) => {
+    const px = prices[p.mint];
+    const valueUsd = px && px.usdPrice > 0 ? p.qty * px.usdPrice : p.valueUsd ?? null;
+    return { mint: p.mint, symbol: cleanText(p.symbol ?? px?.symbol), icon: p.icon ?? px?.icon ?? null, openedAt: p.openedAt, costUsd: round(Number(p.costUsd) || 0, 2), valueUsd: valueUsd == null ? null : round(valueUsd, 2), pnlPct: valueUsd != null && p.costUsd > 0 ? round((valueUsd - p.costUsd) / p.costUsd * 100, 1) : null };
+  }).sort((a, b) => b.openedAt - a.openedAt);
+  const hand = {
+    positions: handPositions,
+    trades: parseList(wTradesRaw).map((x) => ({ at: x.at, side: x.side, mint: x.mint, symbol: cleanText(x.symbol ?? prices[x.mint]?.symbol), icon: prices[x.mint]?.icon ?? null, usd: x.usd, tx: x.tx })),
+    totals: { buys: num2(ws.buys), sells: num2(ws.sells), wins: num2(ws.wins), losses: num2(ws.losses), realizedUsd: round(num2(ws.realizedUsd), 2) }
+  };
   const nowMs = now();
   const pill = jsonParseSafe(pillRaw, null);
   const board = jsonParseSafe(boardRaw, null);
@@ -304,7 +326,8 @@ async function statsResponse({ env = process.env, fetchFn, now = () => Date.now(
     body: {
       ...base,
       updatedAt: board && board.updatedAt || pill && pill.at || null,
-      pill: pill ? { wallet: pill.wallet, sol: pill.sol ?? null, pillTokens: pill.pillTokens ?? null } : base.pill,
+      pill: pill ? { wallet: pill.wallet, sol: pill.sol ?? null, usdc: pill.usdc ?? null, pillTokens: pill.pillTokens ?? null } : base.pill,
+      hand,
       totals: {
         tradesRead24h: sum24h(hTrades, nowMs),
         tradesReadAll: num2(t.tradesReadAll),

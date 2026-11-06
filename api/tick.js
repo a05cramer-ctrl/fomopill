@@ -98110,6 +98110,14 @@ var K = {
   // hash "<mint>@<at>" -> JSON posted call {mint, at, symbol, priceAtDose, mcapAtDose, id, marks}
   xCount: "fp:xCount",
   // hash "d:<day>" / "c:<hour>" -> posts made
+  wSig: "fp:wSig",
+  // newest signature of Pip's wallet already read
+  wPos: "fp:wPos",
+  // JSON {mint: position} — Pip's open hand trades (made in the fomo app), USD cost basis
+  wTrades: "fp:wTrades",
+  // list of Pip's hand trades, newest first
+  wStats: "fp:wStats",
+  // hash realizedUsd / wins / losses / buys / sells
   positions: "fp:positions",
   // JSON array
   trades: "fp:trades",
@@ -98577,6 +98585,66 @@ function planXPosts({ dose, calls, counts, prices, nowMs, c, boughtSol = null, m
   return out;
 }
 
+// lib/wallet.js
+init_util();
+var absBig2 = (x) => x < 0n ? -x : x;
+function walletTradeOf(tx, wallet, { solPrice = null } = {}) {
+  const { trade } = parseFomoTx(tx, { solPrice });
+  if (!trade || trade.w !== wallet) return null;
+  const rows = tokenDeltas(tx.meta).filter((d) => d.owner === wallet && d.mint === trade.m);
+  const delta = rows.reduce((a2, d) => a2 + d.delta, 0n);
+  const decimals = rows.length ? rows[0].decimals : 6;
+  const q = uiAmount(absBig2(delta), decimals);
+  if (!(q > 0)) return null;
+  const sig = tx.transaction.signatures && tx.transaction.signatures[0];
+  return { t: trade.t, s: trade.s, m: trade.m, u: trade.u, q, tx: sig ? String(sig) : null };
+}
+function applyWalletTrade(pos, tr) {
+  const next = { ...pos };
+  const at = tr.t * 1e3;
+  const p2 = next[tr.m] ? { ...next[tr.m] } : null;
+  if (tr.s > 0) {
+    const q = p2 || { mint: tr.m, qty: 0, costUsd: 0, boughtUsd: 0, realizedUsd: 0, openedAt: at };
+    q.qty += tr.q;
+    q.costUsd += tr.u;
+    q.boughtUsd += tr.u;
+    q.lastAt = at;
+    next[tr.m] = q;
+    return { pos: next, closed: null };
+  }
+  if (!p2 || !(p2.qty > 0)) return { pos: next, closed: null };
+  const frac = Math.min(1, tr.q / p2.qty);
+  const out = p2.costUsd * frac;
+  p2.realizedUsd += tr.u - out;
+  p2.qty -= tr.q;
+  p2.costUsd -= out;
+  p2.lastAt = at;
+  if (frac >= 0.999 || p2.qty <= 0) {
+    delete next[tr.m];
+    return { pos: next, closed: { mint: tr.m, pnlUsd: p2.realizedUsd, boughtUsd: p2.boughtUsd } };
+  }
+  next[tr.m] = p2;
+  return { pos: next, closed: null };
+}
+async function readWalletTrades({ rpc, wallet, lastSig = null, solPrice = null, remaining = () => Infinity, limit = 25 }) {
+  const opts = { limit };
+  if (lastSig) opts.until = lastSig;
+  const sigs = await rpc.getSignaturesForAddress(wallet, opts) || [];
+  const newest = sigs.length ? sigs[0].signature : lastSig;
+  const trades = [];
+  let upto = lastSig;
+  for (const s of sigs.slice().reverse()) {
+    if (remaining() < 4e3) return { trades, newest: upto, seen: sigs.length, partial: true };
+    if (!s.err) {
+      const tx = await rpc.getTransaction(s.signature);
+      const tr = tx && walletTradeOf(tx, wallet, { solPrice });
+      if (tr) trades.push(tr);
+    }
+    upto = s.signature;
+  }
+  return { trades, newest: newest || upto, seen: sigs.length };
+}
+
 // lib/tick.js
 var RELEASE_LOCK = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
 var TX_OPTS = { maxSupportedTransactionVersion: 1, encoding: "jsonParsed", commitment: "confirmed" };
@@ -98602,7 +98670,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
   if (locked !== "OK") return { ...log, ok: false, skipped: "locked", ms: now() - start };
   const writes = [];
   try {
-    const [lastSig, windowRaw, totalsFlat, dosedFlat, positionsRaw, pendingRaw, feeLastAtRaw, solPriceRaw, dosesRaw, hTradesFlat, pricesRaw, peakFlat, xCallsFlat, xCountFlat] = await kv.pipeline([
+    const [lastSig, windowRaw, totalsFlat, dosedFlat, positionsRaw, pendingRaw, feeLastAtRaw, solPriceRaw, dosesRaw, hTradesFlat, pricesRaw, peakFlat, xCallsFlat, xCountFlat, wSig, wPosRaw] = await kv.pipeline([
       ["GET", K.lastSig],
       ["GET", K.window],
       ["HGETALL", K.totals],
@@ -98616,7 +98684,9 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
       ["GET", K.prices],
       ["HGETALL", K.dosePeak],
       ["HGETALL", K.xCalls],
-      ["HGETALL", K.xCount]
+      ["HGETALL", K.xCount],
+      ["GET", K.wSig],
+      ["GET", K.wPos]
     ]);
     const totals = flatToObj(totalsFlat);
     const dosedAt = flatToObj(dosedFlat);
@@ -98630,6 +98700,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
       if (o && o.mint) xCalls[key] = o;
     }
     const xCount = flatToObj(xCountFlat);
+    let wPos = jsonParseSafe(wPosRaw, {}) || {};
     const jup = jupClient({ fetchFn });
     const solCached = jsonParseSafe(solPriceRaw, null);
     let solPrice = null;
@@ -98691,7 +98762,7 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
     const window2 = mergeWindow(jsonParseSafe(windowRaw, []) || [], trades, nowSec, c.windowSec);
     const board = buildBoard(window2, { top: c.boardTop, triggerWallets: c.triggerWallets });
     log.stages.window = { size: window2.length, coins: board.totals.coins10m, wallets: board.totals.wallets10m };
-    const interest = [.../* @__PURE__ */ new Set([...board.coins.map((x2) => x2.mint), ...tapeMints(window2), ...recentDoses.map((d) => d.mint), ...positions.map((p2) => p2.mint), ...Object.values(xCalls).map((v2) => v2.mint)])];
+    const interest = [.../* @__PURE__ */ new Set([...board.coins.map((x2) => x2.mint), ...tapeMints(window2), ...recentDoses.map((d) => d.mint), ...positions.map((p2) => p2.mint), ...Object.values(xCalls).map((v2) => v2.mint), ...Object.keys(wPos)])];
     let info = /* @__PURE__ */ new Map();
     try {
       if (interest.length) info = await jup.tokenInfo(interest);
@@ -98764,10 +98835,41 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
         const lamports = await txRpc.getBalance(pillWallet);
         let pillTokens = null;
         if (c.pillMint) pillTokens = sumTokenAccounts(await txRpc.getParsedTokenAccountsByOwner(pillWallet, c.pillMint)).ui;
-        writes.push(["SET", K.pill, JSON.stringify({ wallet: pillWallet, sol: round(lamports / 1e9, 4), pillTokens, at: nowMs })]);
-        log.stages.pill = { sol: round(lamports / 1e9, 4), pillTokens };
+        let usdc = null;
+        try {
+          usdc = round(sumTokenAccounts(await txRpc.getParsedTokenAccountsByOwner(pillWallet, USDC_MINT)).ui, 2);
+        } catch (e) {
+          fail("pillCash", e);
+        }
+        writes.push(["SET", K.pill, JSON.stringify({ wallet: pillWallet, sol: round(lamports / 1e9, 4), usdc, pillTokens, at: nowMs })]);
+        log.stages.pill = { sol: round(lamports / 1e9, 4), usdc, pillTokens };
       } catch (e) {
         fail("pill", e);
+      }
+    }
+    if (pillWallet && remaining() > 8e3) {
+      try {
+        const r = await readWalletTrades({ rpc: txRpc, wallet: pillWallet, lastSig: wSig || null, solPrice, remaining });
+        for (const tr2 of r.trades) {
+          const sym = prices[tr2.m] && prices[tr2.m].symbol || prevPrices[tr2.m] && prevPrices[tr2.m].symbol || null;
+          const res = applyWalletTrade(wPos, tr2);
+          wPos = res.pos;
+          writes.push(["LPUSH", K.wTrades, JSON.stringify({ at: tr2.t * 1e3, side: tr2.s > 0 ? "buy" : "sell", mint: tr2.m, symbol: sym, usd: tr2.u, qty: tr2.q, tx: tr2.tx })]);
+          writes.push(["HINCRBY", K.wStats, tr2.s > 0 ? "buys" : "sells", "1"]);
+          if (res.closed) {
+            writes.push(["HINCRBYFLOAT", K.wStats, "realizedUsd", String(round(res.closed.pnlUsd, 2))], ["HINCRBY", K.wStats, res.closed.pnlUsd >= 0 ? "wins" : "losses", "1"]);
+          }
+        }
+        if (r.trades.length) writes.push(["LTRIM", K.wTrades, "0", "99"]);
+        for (const m of Object.keys(wPos)) {
+          const px = prices[m] || prevPrices[m];
+          if (px && px.usdPrice > 0) wPos[m] = { ...wPos[m], valueUsd: round(wPos[m].qty * px.usdPrice, 2), symbol: wPos[m].symbol || px.symbol || null, icon: px.icon || null };
+        }
+        writes.push(["SET", K.wPos, JSON.stringify(wPos)]);
+        if (r.newest && r.newest !== wSig) writes.push(["SET", K.wSig, r.newest]);
+        log.stages.hand = { seen: r.seen, trades: r.trades.length, open: Object.keys(wPos).length, partial: Boolean(r.partial) };
+      } catch (e) {
+        fail("hand", e);
       }
     }
     const tr = { entries: 0, exits: 0, burns: 0, fees: 0, skipped: [] };

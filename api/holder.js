@@ -2404,6 +2404,14 @@ var K = {
   // hash "<mint>@<at>" -> JSON posted call {mint, at, symbol, priceAtDose, mcapAtDose, id, marks}
   xCount: "fp:xCount",
   // hash "d:<day>" / "c:<hour>" -> posts made
+  wSig: "fp:wSig",
+  // newest signature of Pip's wallet already read
+  wPos: "fp:wPos",
+  // JSON {mint: position} — Pip's open hand trades (made in the fomo app), USD cost basis
+  wTrades: "fp:wTrades",
+  // list of Pip's hand trades, newest first
+  wStats: "fp:wStats",
+  // hash realizedUsd / wins / losses / buys / sells
   positions: "fp:positions",
   // JSON array
   trades: "fp:trades",

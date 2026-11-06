@@ -2284,6 +2284,8 @@ function cfg() {
     readTimeoutMs: num("READ_TIMEOUT_MS", 6e3),
     tickBudgetMs: num("TICK_BUDGET_MS", 5e4),
     tickGapMs: num("TICK_GAP_MS", 5e4),
+    callsFrom: num("CALLS_FROM", 17939916e5),
+    // Pip's public record starts here (2026-11-06 20:00 Stockholm, when it began running non-stop)
     windowSec: num("WINDOW_SEC", 600),
     // board / trigger
     triggerWallets: num("TRIGGER_WALLETS", 5),

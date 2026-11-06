@@ -58,6 +58,8 @@ function cfg() {
     readTimeoutMs: num("READ_TIMEOUT_MS", 6e3),
     tickBudgetMs: num("TICK_BUDGET_MS", 5e4),
     tickGapMs: num("TICK_GAP_MS", 5e4),
+    callsFrom: num("CALLS_FROM", 17939916e5),
+    // Pip's public record starts here (2026-11-06 20:00 Stockholm, when it began running non-stop)
     windowSec: num("WINDOW_SEC", 600),
     // board / trigger
     triggerWallets: num("TRIGGER_WALLETS", 5),
@@ -98693,6 +98695,20 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
     let positions = jsonParseSafe(positionsRaw, []) || [];
     let pending = jsonParseSafe(pendingRaw, []) || [];
     const recentDoses = parseList(dosesRaw);
+    if (c.callsFrom > 0 && Array.isArray(dosesRaw)) {
+      let dropped = 0;
+      for (const raw of dosesRaw) {
+        const d = jsonParseSafe(raw, null);
+        if (!d || !(Number(d.at) < c.callsFrom)) continue;
+        writes.push(["LREM", K.doses, "0", raw], ["HINCRBY", K.hDoses, String(hourIndex(Number(d.at))), "-1"]);
+        dropped++;
+      }
+      if (dropped) {
+        writes.push(["HINCRBY", K.totals, "dosesAll", String(-dropped)]);
+        for (let i = recentDoses.length - 1; i >= 0; i--) if (recentDoses[i] && Number(recentDoses[i].at) < c.callsFrom) recentDoses.splice(i, 1);
+        log.stages.recordStart = { dropped };
+      }
+    }
     const prevPrices = jsonParseSafe(pricesRaw, {}) || {};
     const xCalls = {};
     for (const [key, v2] of Object.entries(flatToObj(xCallsFlat))) {

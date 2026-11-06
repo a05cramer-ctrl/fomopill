@@ -1,1 +1,1 @@
-window.FOMOPILL_CFG={NAME:"Pip The Trader",TICKER:"PIP",CA:"",CHAIN:"solana",PAD:"pumpfun",PAIR:"",X:"",BUY:"",CHART:"",PILL_WALLET:"",REPO:""}
+window.FOMOPILL_CFG={NAME:"Pip The Trader",TICKER:"PIP",CA:"",CHAIN:"solana",PAD:"pumpfun",PAIR:"",X:"https://x.com/PipTheTrader",FOMO:"https://fomo.family/profile/PipTheTrader?r=WarmNovelFlea",BUY:"",CHART:"",PILL_WALLET:"",REPO:""}

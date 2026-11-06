@@ -98850,7 +98850,13 @@ async function runTick({ env = process.env, fetchFn, now = () => Date.now(), sle
       try {
         const lamports = await txRpc.getBalance(pillWallet);
         let pillTokens = null;
-        if (c.pillMint) pillTokens = sumTokenAccounts(await txRpc.getParsedTokenAccountsByOwner(pillWallet, c.pillMint)).ui;
+        if (c.pillMint) {
+          try {
+            pillTokens = sumTokenAccounts(await txRpc.getParsedTokenAccountsByOwner(pillWallet, c.pillMint)).ui;
+          } catch (e) {
+            fail("pillTokens", e);
+          }
+        }
         let usdc = null;
         try {
           usdc = round(sumTokenAccounts(await txRpc.getParsedTokenAccountsByOwner(pillWallet, USDC_MINT)).ui, 2);

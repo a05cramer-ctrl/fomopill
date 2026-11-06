@@ -2641,7 +2641,7 @@ var ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 var esm_default2 = esm_default(ALPHABET);
 
 // lib/holder.js
-var HOLDER_MSG_PREFIX = "FOMO PILL\nprescription check\n";
+var HOLDER_MSG_PREFIX = "Pip The Trader\nprescription check\n";
 var holderMessage = (minute) => `${HOLDER_MSG_PREFIX}${minute}`;
 var TOKEN_TTL_MS = 24 * 3600 * 1e3;
 var B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;

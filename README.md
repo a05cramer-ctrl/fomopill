@@ -1,4 +1,4 @@
-# FOMO PILL
+# Pip The Trader
 
 Fomo's #1 KOL is a pill. Static site + 4 Vercel functions (api/board, api/stats, api/holder, api/tick).
 Every call and every board number is read off Solana by api/tick, once a minute. Nothing in this repo is sample data.
@@ -17,7 +17,7 @@ It adds KV_REST_API_URL and KV_REST_API_TOKEN by itself.
 ## 4. Environment variables (Project > Settings > Environment Variables)
 Nothing else is needed to run: the board, the calls and the stats work with just the storage from step 3.
 Add after launch:
-- PILL_MINT        the $FOMOPILL CA. Turns on the holder view: holders see fomo live, everyone else 5 minutes late.
+- PILL_MINT        the $PIP CA. Turns on the holder view: holders see fomo live, everyone else 5 minutes late.
 - HOLDER_SECRET    any long random string (you make it up). Needed once PILL_MINT is set.
 - PILL_WALLET      the pill's wallet address (shown on the site)
 Optional:

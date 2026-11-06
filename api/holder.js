@@ -2767,8 +2767,7 @@ function clientIp(req) {
 async function holderResponse({ body, env = process.env, fetchFn, now = () => Date.now(), ip = "0" } = {}) {
   const c = cfg();
   const min = c.holderMin;
-  if (!c.pillMint) return { status: 200, body: { ok: true, token: null, balance: null, min, gate: false } };
-  if (!c.holderSecret) return { status: 500, body: { ok: false, error: "gate_not_configured", min } };
+  if (!c.pillMint || !c.holderSecret) return { status: 200, body: { ok: true, token: null, balance: null, min, gate: false } };
   if (!body || typeof body !== "object") return { status: 400, body: { ok: false, error: "bad_body", min } };
   const { wallet, signature, minute } = body;
   if (typeof wallet !== "string" || typeof signature !== "string") return { status: 400, body: { ok: false, error: "bad_input", min } };

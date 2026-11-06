@@ -2673,7 +2673,7 @@ function shape(doc, { c, gate, delayed }) {
 }
 async function boardResponse({ env = process.env, fetchFn, token, now = () => Date.now() } = {}) {
   const c = cfg();
-  const gateEnabled = Boolean(c.pillMint);
+  const gateEnabled = Boolean(c.pillMint && c.holderSecret);
   const gate = { enabled: gateEnabled, min: c.holderMin };
   const kv = kvClient({ env, fetchFn });
   if (!kv.configured) return { status: 200, body: { ...shape(null, { c, gate, delayed: false }), error: "kv_not_configured" } };

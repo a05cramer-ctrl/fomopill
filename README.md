@@ -17,8 +17,9 @@ It adds KV_REST_API_URL and KV_REST_API_TOKEN by itself.
 ## 4. Environment variables (Project > Settings > Environment Variables)
 Nothing else is needed to run: the board, the calls and the stats work with just the storage from step 3.
 Add after launch:
-- PILL_MINT        the $PIP CA. Turns on the holder view: holders see fomo live, everyone else 5 minutes late.
-- HOLDER_SECRET    any long random string (you make it up). Needed once PILL_MINT is set.
+- PILL_MINT        the $PIP CA. The site then also shows how much $PIP Pip's wallet holds. Everything stays live for everyone.
+Optional:
+- HOLDER_SECRET    only if you want a holders-only view (holders live, everyone else 5 minutes late). Leave it out to keep it off.
 - PILL_WALLET      the pill's wallet address (shown on the site)
 Optional:
 - RPC_URL          your Helius RPC URL (faster reads than the public RPC)
